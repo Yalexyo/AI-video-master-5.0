@@ -68,4 +68,22 @@ venv.bak/
 
 # Config files with sensitive data
 config.txt
-*.env 
+*.env
+
+# UV specific
+uv.lock
+.python-version
+
+# Backup files
+*.backup
+requirements.txt.backup
+
+# Old virtual environments (cleaned up)
+video_slice_env/
+video_srt_env/
+
+# Google Cloud credentials and sensitive files
+*.json
+**/video-ai-*.json
+**/*-credentials.json
+**/*-service-account.json 
