@@ -11,6 +11,13 @@ import time
 from typing import Dict, Any, List, Optional, Union, Tuple
 from pathlib import Path
 
+# 导入环境变量加载器
+try:
+    from .env_loader import get_dashscope_api_key, get_default_vocab_id
+except ImportError:
+    # 处理直接运行时的导入问题
+    from env_loader import get_dashscope_api_key, get_default_vocab_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +31,7 @@ class DashScopeAudioAnalyzer:
         Args:
             api_key: DashScope API密钥
         """
-        self.api_key = api_key or os.environ.get("DASHSCOPE_API_KEY")
+        self.api_key = api_key or get_dashscope_api_key()
         self.base_url = "https://dashscope.aliyuncs.com"
         
         if not self.api_key:
@@ -52,22 +59,18 @@ class DashScopeAudioAnalyzer:
     def transcribe_audio(
         self,
         audio_path: str,
-        hotwords: Optional[List[str]] = None,
-        professional_terms: Optional[List[str]] = None,
         language: str = "zh",
         format_result: bool = True,
         preset_vocabulary_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        转录音频文件
+        转录音频文件 - 使用预设词汇表ID
         
         Args:
             audio_path: 音频文件路径
-            hotwords: 热词列表
-            professional_terms: 专业词汇列表
             language: 语言代码
             format_result: 是否格式化结果
-            preset_vocabulary_id: 预设词汇表ID
+            preset_vocabulary_id: 预设词汇表ID (默认使用婴幼儿奶粉专用热词表)
             
         Returns:
             转录结果字典
@@ -100,26 +103,16 @@ class DashScopeAudioAnalyzer:
                     "segments": []
                 }
             
-            # 2. 调用DashScope ASR API
+            # 2. 调用DashScope ASR API - 使用预设词汇表ID（自动从.env获取默认值）
+            if not preset_vocabulary_id:
+                preset_vocabulary_id = get_default_vocab_id()
+            
             result = self._call_dashscope_asr(
                 oss_url=oss_url,
-                hotwords=hotwords,
-                professional_terms=professional_terms,
                 language=language,
                 preset_vocabulary_id=preset_vocabulary_id
             )
             
-            # 3. 后处理结果
-            if result.get("success") and professional_terms and result.get("transcript"):
-                # 应用专业词汇修正
-                corrected_transcript = self.correct_professional_terms(
-                    result["transcript"], 
-                    professional_terms
-                    )
-                result["transcript"] = corrected_transcript
-                result["corrected"] = True
-            
-            # 🔧 修复：确保总是返回result，而不是仅在专业词汇修正时返回
             return result
                 
         except Exception as e:
@@ -267,8 +260,6 @@ class DashScopeAudioAnalyzer:
     def _call_dashscope_asr(
         self, 
         oss_url: str, 
-        hotwords: Optional[List[str]] = None,
-        professional_terms: Optional[List[str]] = None,
         language: str = "zh",
         preset_vocabulary_id: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -312,20 +303,12 @@ class DashScopeAudioAnalyzer:
                 'enable_sample_rate_adaptive': True,   # 自动降采样（适配任意采样率）
             }
             
-            # 🎯 热词处理（官方支持定制热词功能）
+            # 🎯 热词处理 - 只使用预设词汇表ID
             if preset_vocabulary_id:
                 params["vocabulary_id"] = preset_vocabulary_id
-                logger.info(f"📋 使用预设热词词汇表: {preset_vocabulary_id}")
-            elif hotwords and len(hotwords) > 0:
-                # 创建自定义词汇表
-                vocabulary_id = self._create_vocabulary(hotwords)
-                if vocabulary_id:
-                    params["vocabulary_id"] = vocabulary_id
-                    logger.info(f"✏️ 使用自定义热词词汇表: {vocabulary_id} (共{len(hotwords)}个热词)")
-                else:
-                    logger.warning("⚠️ 自定义热词词汇表创建失败，继续使用基础识别")
+                logger.info(f"🍼 使用婴幼儿奶粉专用热词表: {preset_vocabulary_id}")
             else:
-                logger.info("🚫 未使用热词优化")
+                logger.info("🚫 未指定热词表，使用基础识别")
             
             logger.info(f"🔧 API调用参数: {params}")
             
@@ -876,15 +859,19 @@ class DashScopeAudioAnalyzer:
         self,
         terms: List[str],
         vocab_name: str = "custom_vocab",
-        domain: str = "general"
+        target_model: str = "paraformer-v2",
+        weight: int = 4,
+        language: str = "zh"
     ) -> Optional[str]:
         """
-        创建自定义词汇表
+        创建自定义词汇表 - 符合阿里云官方标准
         
         Args:
             terms: 词汇列表
-            vocab_name: 词汇表名称
-            domain: 领域
+            vocab_name: 词汇表名称前缀
+            target_model: 目标模型 (paraformer-v2, paraformer-realtime-v2等)
+            weight: 热词权重 (1-5，推荐4)
+            language: 语言代码 (zh, en等)
             
         Returns:
             词汇表ID
@@ -896,34 +883,32 @@ class DashScopeAudioAnalyzer:
         try:
             from dashscope.audio.asr import VocabularyService
             
+            # 🎯 按照官方标准格式构建热词列表
+            vocabulary = []
+            for term in terms:
+                vocabulary.append({
+                    "text": term.strip(),
+                    "weight": weight,
+                    "lang": language
+                })
+            
+            logger.info(f"📋 创建热词表: 模型={target_model}, 前缀={vocab_name}, 词汇数={len(vocabulary)}")
+            
             vocab_service = VocabularyService()
-            result = vocab_service.create_vocabulary(
-                vocabulary_name=vocab_name,
-                domain=domain,
-                words=terms
+            # 🔧 使用官方标准API调用方式
+            vocabulary_id = vocab_service.create_vocabulary(
+                prefix=vocab_name,
+                target_model=target_model,
+                vocabulary=vocabulary
             )
             
-            # 适配不同的返回格式
-            if isinstance(result, dict):
-                # 如果直接返回字典
-                if result.get("success", True):  # 假设成功
-                    vocab_id = result.get('vocabulary_id') or result.get("output", {}).get('vocabulary_id')
-                    if vocab_id:
-                        logger.info(f"自定义词汇表创建成功: {vocab_id}")
-                        return vocab_id
-                logger.error(f"词汇表创建失败: {result.get('error', '未知错误')}")
-                return None
-            elif hasattr(result, 'status_code'):
-                # 如果有status_code属性（老格式）
-                if result.status_code == 200:
-                    vocab_id = result.output.get('vocabulary_id')
-                    logger.info(f"自定义词汇表创建成功: {vocab_id}")
-                    return vocab_id
-                else:
-                    logger.error(f"词汇表创建失败: {result.message}")
-                    return None
+            # 🔧 处理官方API返回结果
+            if vocabulary_id:
+                logger.info(f"✅ 热词表创建成功: {vocabulary_id}")
+                logger.info(f"📊 热词详情: {len(vocabulary)}个词汇，权重={weight}，语言={language}")
+                return vocabulary_id
             else:
-                logger.error(f"未知的响应格式: {type(result)}")
+                logger.error("❌ 热词表创建失败: 未获取到vocabulary_id")
                 return None
                 
         except Exception as e:
@@ -1147,14 +1132,68 @@ class DashScopeAudioAnalyzer:
             logger.error(f"音频提取异常: {str(e)}")
             return None
     
-    def _create_vocabulary(self, words: List[str]) -> Optional[str]:
-        """创建临时词汇表"""
+    def _create_vocabulary(self, words: List[str], language: str = "zh") -> Optional[str]:
+        """创建临时词汇表 - 官方标准格式 (从简单词汇列表)"""
         try:
             import uuid
             vocab_name = f"temp_vocab_{uuid.uuid4().hex[:8]}"
-            return self.create_custom_vocabulary(words, vocab_name)
+            return self.create_custom_vocabulary(
+                terms=words,
+                vocab_name=vocab_name,
+                target_model="paraformer-v2",
+                weight=4,
+                language=language
+            )
         except Exception as e:
             logger.error(f"创建临时词汇表失败: {str(e)}")
+            return None
+    
+    def _create_vocabulary_from_standard(self, standard_hotwords: List[Dict[str, Any]]) -> Optional[str]:
+        """创建临时词汇表 - 直接使用标准格式热词"""
+        if not self.is_available():
+            logger.warning("DashScope API不可用")
+            return None
+        
+        try:
+            import uuid
+            from dashscope.audio.asr import VocabularyService
+            
+            # prefix不能超过10个字符 - 符合阿里云官方标准
+            vocab_name = f"baby{uuid.uuid4().hex[:4]}"  # baby + 4位随机字符 = 8字符
+            target_model = "paraformer-v2"  # 默认模型
+            
+            # 验证标准热词格式
+            valid_hotwords = []
+            for hw in standard_hotwords:
+                if isinstance(hw, dict) and 'text' in hw:
+                    valid_hotwords.append({
+                        "text": hw.get('text', '').strip(),
+                        "weight": hw.get('weight', 4),
+                        "lang": hw.get('lang', 'zh')
+                    })
+            
+            if not valid_hotwords:
+                logger.warning("没有有效的标准格式热词")
+                return None
+            
+            logger.info(f"📋 创建标准格式热词表: 模型={target_model}, 前缀={vocab_name}, 词汇数={len(valid_hotwords)}")
+            
+            vocab_service = VocabularyService()
+            vocabulary_id = vocab_service.create_vocabulary(
+                prefix=vocab_name,
+                target_model=target_model,
+                vocabulary=valid_hotwords
+            )
+            
+            if vocabulary_id:
+                logger.info(f"✅ 标准热词表创建成功: {vocabulary_id}")
+                return vocabulary_id
+            else:
+                logger.error("❌ 标准热词表创建失败: 未获取到vocabulary_id")
+                return None
+                
+        except Exception as e:
+            logger.error(f"创建标准热词表失败: {str(e)}")
             return None
     
     def _apply_professional_correction(

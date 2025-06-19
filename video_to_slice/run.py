@@ -1,188 +1,190 @@
 #!/usr/bin/env python3
 """
-批量视频切片工具 - 快速启动脚本
-提供便捷的启动方式和环境检查
+AI Video Master 5.0 - 统一运行入口 (纯并行版)
+专注于并行处理，提供最佳性能
+
+功能特性:
+- 🚀 双层并行处理 (视频级 + 切片级)
+- 🎯 智能并发控制 (遵循API配额)
+- 📊 实时进度监控
+- 🛡️ 自动重试和容错
+- 📈 详细性能报告
 """
 
 import os
 import sys
-import subprocess
+import argparse
+import logging
 from pathlib import Path
 
-def check_environment():
-    """检查运行环境"""
-    print("🔍 检查运行环境...")
-    
-    checks = {
-        "Python版本": False,
-        "FFmpeg": False,
-        "依赖包": False,
-        "Google Cloud凭据": False
-    }
-    
-    # 检查Python版本
-    python_version = sys.version_info
-    if python_version >= (3, 10):
-        checks["Python版本"] = True
-        print(f"✅ Python {python_version.major}.{python_version.minor}.{python_version.micro}")
-    else:
-        print(f"❌ Python版本过低: {python_version.major}.{python_version.minor}.{python_version.micro} < 3.10")
-    
-    # 检查FFmpeg
-    try:
-        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=10)
-        if result.returncode == 0:
-            checks["FFmpeg"] = True
-            print("✅ FFmpeg 已安装")
-        else:
-            print("❌ FFmpeg 不可用")
-    except FileNotFoundError:
-        print("❌ FFmpeg 未安装")
-    except subprocess.TimeoutExpired:
-        print("⚠️ FFmpeg 检查超时")
-    
-    # 检查依赖包
-    try:
-        import google.cloud.videointelligence_v1
-        import google.cloud.storage
-        import requests
-        checks["依赖包"] = True
-        print("✅ Python依赖包已安装")
-    except ImportError as e:
-        print(f"❌ 缺少依赖包: {e}")
-    
-    # 检查Google Cloud凭据
-    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if os.path.exists(cred_path):
-            checks["Google Cloud凭据"] = True
-            print(f"✅ Google Cloud凭据: {cred_path}")
-        else:
-            print(f"❌ 凭据文件不存在: {cred_path}")
-    elif os.path.exists("google_credentials.json"):
-        checks["Google Cloud凭据"] = True
-        print("✅ Google Cloud凭据: ./google_credentials.json")
-    else:
-        print("❌ 未找到Google Cloud凭据")
-    
-    return all(checks.values()), checks
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-def install_dependencies():
-    """安装依赖包"""
-    print("\n📦 安装Python依赖包...")
-    try:
-        subprocess.run([
-            sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
-        ], check=True)
-        print("✅ 依赖包安装完成")
-        return True
-    except subprocess.CalledProcessError:
-        print("❌ 依赖包安装失败")
-        return False
-
-def show_usage_examples():
-    """显示使用示例"""
-    print("\n📖 使用示例:")
-    print("1. 基本用法:")
-    print("   python batch_video_to_slice.py input_videos/")
-    print()
-    print("2. 指定输出目录:")
-    print("   python batch_video_to_slice.py input_videos/ -o my_output/")
-    print()
-    print("3. 详细输出:")
-    print("   python batch_video_to_slice.py input_videos/ -v")
-    print()
-    print("4. 自定义分析功能:")
-    print("   python batch_video_to_slice.py input_videos/ -f shot_detection label_detection")
+# 设置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def main():
-    """主函数"""
-    print("🎬 批量视频切片工具 - 环境检查")
-    print("=" * 50)
+    """主入口函数"""
+    parser = argparse.ArgumentParser(
+        description="🎬 AI Video Master 5.0 - 并行视频切片处理系统",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  %(prog)s data/input/                         # 处理输入目录下所有视频
+  %(prog)s data/input/ -o data/output/         # 指定输出目录
+  %(prog)s data/input/ -c 2 -w 6               # 调整并发参数
+  %(prog)s data/input/ -f shot_detection       # 仅镜头检测(最快)
+  %(prog)s data/input/ -v                      # 详细输出
+
+性能优化建议:
+  - 使用默认参数通常性能最佳
+  - 视频并发数不要超过3 (API限制)
+  - FFmpeg线程数建议为CPU核心数的一半
+  - 仅使用镜头检测功能可获得最佳速度
+        """
+    )
     
-    # 检查环境
-    all_ok, checks = check_environment()
+    # 基本参数
+    parser.add_argument("input_dir", 
+                       help="输入视频目录路径")
+    parser.add_argument("-o", "--output", 
+                       default="./data/output",
+                       help="输出目录 (默认: ./data/output)")
+    parser.add_argument("-t", "--temp", 
+                       default="./data/temp",
+                       help="临时目录 (默认: ./data/temp)")
     
-    if not all_ok:
-        print("\n⚠️ 环境检查发现问题:")
-        
-        for check_name, status in checks.items():
-            if not status:
-                print(f"   - {check_name}")
-        
-        print("\n🔧 解决方案:")
-        
-        if not checks["Python版本"]:
-            print("   - 升级Python到3.10+版本")
-        
-        if not checks["FFmpeg"]:
-            print("   - 安装FFmpeg:")
-            print("     macOS: brew install ffmpeg")
-            print("     Ubuntu: sudo apt install ffmpeg")
-            print("     Windows: https://ffmpeg.org/download.html")
-        
-        if not checks["依赖包"]:
-            response = input("\n是否自动安装Python依赖包? (y/n): ")
-            if response.lower() in ['y', 'yes']:
-                if install_dependencies():
-                    checks["依赖包"] = True
-        
-        if not checks["Google Cloud凭据"]:
-            print("   - 设置Google Cloud凭据:")
-            print("     方法1: export GOOGLE_APPLICATION_CREDENTIALS='path/to/credentials.json'")
-            print("     方法2: 将凭据文件重命名为 google_credentials.json 放在当前目录")
-            print("   - 参考config_example.txt了解详细配置")
+    # 功能参数
+    parser.add_argument("-f", "--features", 
+                       nargs="+",
+                       choices=["shot_detection", "label_detection", "face_detection", "text_detection"],
+                       default=["shot_detection"],
+                       help="分析功能 (默认: shot_detection，性能最佳)")
+    
+    # 性能参数
+    parser.add_argument("-c", "--concurrent", 
+                       type=int, 
+                       default=3,
+                       help="视频级并发数 (默认: 3，建议不超过3)")
+    parser.add_argument("-w", "--ffmpeg-workers", 
+                       type=int, 
+                       default=4,
+                       help="FFmpeg并行线程数 (默认: 4，建议2-8)")
+    
+    # 文件过滤参数
+    parser.add_argument("--patterns", 
+                       nargs="+",
+                       default=["*.mp4", "*.avi", "*.mov", "*.mkv"],
+                       help="文件匹配模式 (默认: mp4,avi,mov,mkv)")
+    
+    # 输出控制
+    parser.add_argument("-v", "--verbose", 
+                       action="store_true",
+                       help="详细输出模式")
+    parser.add_argument("-q", "--quiet", 
+                       action="store_true",
+                       help="安静模式 (仅显示错误)")
+    
+    args = parser.parse_args()
+    
+    # 设置日志级别
+    if args.quiet:
+        logging.getLogger().setLevel(logging.ERROR)
+    elif args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    # 显示启动信息
+    if not args.quiet:
+        print("🎬 AI Video Master 5.0 - 并行视频切片处理系统")
+        print("=" * 60)
+        print(f"📁 输入目录: {args.input_dir}")
+        print(f"📂 输出目录: {args.output}")
+        print(f"🎯 分析功能: {', '.join(args.features)}")
+        print(f"🚀 视频并发数: {args.concurrent}")
+        print(f"⚡ FFmpeg线程数: {args.ffmpeg_workers}")
+        print(f"📄 文件模式: {', '.join(args.patterns)}")
+        print("=" * 60)
     
     # 检查输入目录
-    input_dir = Path("input_videos")
-    if not input_dir.exists():
-        input_dir.mkdir()
-        print(f"\n📁 已创建输入目录: {input_dir}")
-        print("   请将视频文件放入此目录")
-    else:
-        video_files = list(input_dir.glob("*.mp4")) + list(input_dir.glob("*.avi")) + \
-                     list(input_dir.glob("*.mov")) + list(input_dir.glob("*.mkv"))
-        if video_files:
-            print(f"\n📁 发现 {len(video_files)} 个视频文件:")
-            for video in video_files[:5]:  # 只显示前5个
-                print(f"   - {video.name}")
-            if len(video_files) > 5:
-                print(f"   ... 还有 {len(video_files) - 5} 个文件")
-        else:
-            print(f"\n📁 输入目录为空: {input_dir}")
-            print("   请将视频文件放入此目录")
-    
-    # 检查输出目录
-    output_dir = Path("output_slices")
-    if not output_dir.exists():
-        output_dir.mkdir()
-        print(f"\n📂 已创建输出目录: {output_dir}")
-    
-    print("\n" + "=" * 50)
-    
-    if all(checks.values()):
-        print("✅ 环境检查通过，可以开始使用!")
-        
-        if len(sys.argv) > 1:
-            # 如果提供了参数，直接运行
-            print("\n🚀 启动批量视频切片...")
-            from batch_video_to_slice import main as slice_main
-            sys.exit(slice_main())
-        else:
-            show_usage_examples()
-            
-            # 询问是否直接运行
-            if input_dir.exists() and list(input_dir.glob("*")):
-                response = input(f"\n是否处理 {input_dir} 目录下的视频? (y/n): ")
-                if response.lower() in ['y', 'yes']:
-                    sys.argv = [sys.argv[0], str(input_dir)]
-                    from batch_video_to_slice import main as slice_main
-                    sys.exit(slice_main())
-    else:
-        print("❌ 请解决环境问题后重试")
+    if not os.path.exists(args.input_dir):
+        logger.error(f"输入目录不存在: {args.input_dir}")
         return 1
     
-    return 0
+    # 检查环境变量
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        google_cred_path = os.path.join(os.path.dirname(__file__), "config", "video-ai-461014-d0c437ff635f.json")
+        if os.path.exists(google_cred_path):
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = google_cred_path
+            logger.info(f"使用项目配置的Google凭据: {google_cred_path}")
+        else:
+            logger.error("❌ Google Cloud凭据未设置")
+            logger.error("请设置 GOOGLE_APPLICATION_CREDENTIALS 环境变量")
+            logger.error("或将凭据文件放在 config/ 目录下")
+            return 1
+    
+    try:
+        # 导入并行处理器
+        from parallel_batch_processor import ParallelBatchProcessor
+        
+        logger.info("🚀 启动并行批处理器...")
+        
+        # 创建处理器
+        processor = ParallelBatchProcessor(
+            output_dir=args.output,
+            temp_dir=args.temp,
+            max_concurrent=args.concurrent,
+            ffmpeg_workers=args.ffmpeg_workers
+        )
+        
+        # 执行处理
+        result = processor.process_batch_sync(
+            input_dir=args.input_dir,
+            file_patterns=args.patterns,
+            features=args.features
+        )
+        
+        # 显示结果
+        if result["success"]:
+            if not args.quiet:
+                print("\n" + "=" * 60)
+                print("✅ 并行批处理完成!")
+                print(f"📊 处理统计: {result['stats']['processed_videos']}/{result['stats']['total_videos']} 个视频成功")
+                print(f"🎬 总计生成: {result['stats']['total_slices']} 个视频切片")
+                print(f"⏱️  总耗时: {result['total_duration']:.1f}秒")
+                print(f"📄 详细报告: {result['report_file']}")
+                
+                if result['parallel_info']['time_saved_percentage'] > 0:
+                    print(f"🚀 性能提升: 节省了 {result['parallel_info']['time_saved_percentage']:.1f}% 的时间!")
+                
+                # 显示性能统计
+                avg_time = result['parallel_info']['average_time_per_video']
+                print(f"📈 平均每视频: {avg_time:.1f}秒")
+                print("=" * 60)
+            
+            logger.info("处理完成，程序正常退出")
+            return 0
+        else:
+            logger.error(f"❌ 批处理失败: {result['error']}")
+            return 1
+            
+    except KeyboardInterrupt:
+        logger.info("⚠️  用户中断处理")
+        return 130
+    except ImportError as e:
+        logger.error(f"❌ 依赖模块导入失败: {e}")
+        logger.error("请确保所有依赖文件在 src/ 目录下")
+        return 1
+    except Exception as e:
+        logger.error(f"❌ 程序异常: {e}")
+        if args.verbose:
+            import traceback
+            logger.error(f"详细错误信息:\n{traceback.format_exc()}")
+        return 1
+    
 
 if __name__ == "__main__":
     sys.exit(main()) 

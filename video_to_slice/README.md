@@ -1,400 +1,271 @@
-# 📹 Google Video Intelligence 批量视频切片工具
+# 🎬 AI Video Master 5.0 - 视频智能切片系统
 
-## ⚡ 项目特点
+> **专业级视频切片工具** - 规范化项目结构，双层并行处理
 
-**🎯 完全兼容组装工厂实现**  
-本工具严格按照已实现的组装工厂(`streamlit_app/pages/2_🧱_组装工厂.py`)中的核心功能实现，确保：
-- 使用相同的 Google Cloud Video Intelligence API
-- 兼容 `VideoProcessor.extract_segment` 接口
-- 采用相同的 FFmpeg 切片参数和质量控制
-- 保持与组装工厂一致的文件命名和目录结构
-
-**🔥 核心功能**
-- 🎬 使用 Google Cloud Video Intelligence API 进行智能视频分析
-- ✂️ 基于镜头检测(Shot Detection)自动切片  
-- 📊 支持多种分析功能：标签检测、人脸检测、文本检测
-- 🔄 批量处理多个视频文件
-- 📈 质量保证机制（80%有效切片率，20%最大错误率）
-- 💾 自动生成详细的处理报告和元数据
-
-## 🏗️ 架构设计
-
-本工具采用与组装工厂完全一致的设计模式：
+## 📁 项目结构
 
 ```
 video_to_slice/
-├── batch_video_to_slice.py    # 批处理主程序（对应组装工厂批处理逻辑）
-├── google_video_analyzer.py   # Google Cloud分析器（对应streamlit_app版本）
-├── video_slicer.py           # 视频切片器（兼容VideoProcessor接口）
-├── run.py                    # 快速启动脚本
-├── requirements.txt          # 依赖包（与项目主依赖一致）
-└── README.md                 # 使用说明
+├── 🎯 主入口
+│   ├── run.py                          # 统一运行入口
+│   ├── start.sh                        # 便捷启动脚本
+│   └── pyproject.toml                  # UV项目配置
+├── 📂 src/                             # 核心源码
+│   ├── parallel_batch_processor.py    # 主并行处理器
+│   ├── parallel_video_slicer.py       # FFmpeg并行切片器
+│   └── google_video_analyzer.py       # Google Cloud分析器
+├── 📊 data/                            # 数据目录
+│   ├── input/                          # 输入视频文件
+│   ├── output/                         # 输出切片文件
+│   └── temp/                           # 临时工作文件
+├── ⚙️ config/                          # 配置文件
+│   ├── config_example.txt             # 配置示例
+│   └── credentials_README.md          # 凭据配置说明
+├── 📖 docs/                            # 文档目录
+│   └── README.md                       # 详细使用文档
+├── 🧪 tests/                           # 测试目录
+└── 🔧 环境配置
+    ├── .venv/                          # 虚拟环境
+    ├── .python-version                 # Python版本
+    └── uv.lock                         # UV锁定文件
 ```
-
-## 📋 系统要求
-
-### 必需软件
-- **Python 3.10+**
-- **FFmpeg** (视频处理)
-- **FFprobe** (视频信息获取)
-
-### Google Cloud 服务
-- Google Cloud 项目
-- Video Intelligence API 已启用
-- Service Account 凭据
-
-## ✨ 主要功能
-
-- 🎯 **智能镜头检测**: 使用Google Cloud Video Intelligence API自动检测视频镜头变化
-- 🔄 **批量处理**: 支持批量处理多个视频文件
-- 📊 **质量保证**: 内置质量验证机制，确保切片文件的有效性
-- 🛡️ **错误处理**: 完善的错误处理和重试机制
-- 📈 **详细统计**: 提供处理统计和详细报告
-- 🎨 **多格式支持**: 支持MP4、AVI、MOV、MKV等主流视频格式
 
 ## 🚀 快速开始
 
-### 环境要求
-
-- Python 3.10+
-- FFmpeg (用于视频处理)
-- Google Cloud账户和项目
-
-### 安装FFmpeg
-
-**macOS:**
+### **1. 环境准备**
 ```bash
-brew install ffmpeg
+# 激活项目环境
+cd video_to_slice
+source .venv/bin/activate
+
+# 或使用UV (推荐)
+cd video_to_slice
+uv sync
 ```
 
-**Ubuntu/Debian:**
+### **2. Google Cloud配置**
 ```bash
-sudo apt update
-sudo apt install ffmpeg
+# 设置Google Cloud凭据 (将JSON文件放在config目录)
+export GOOGLE_APPLICATION_CREDENTIALS="config/your-service-account.json"
+
+# 或参考配置说明
+cat config/credentials_README.md
 ```
 
-**Windows:**
-下载安装包: https://ffmpeg.org/download.html
-
-### 安装Python依赖
-
+### **3. 基本使用**
 ```bash
-pip install -r requirements.txt
+# 处理输入目录中的所有视频
+python run.py data/input/
+
+# 使用UV运行 (推荐)
+uv run run.py data/input/
+
+# 指定输出目录
+python run.py data/input/ -o data/output/
+
+# 并行优化模式
+python run.py data/input/ -c 3 -w 4 -v
 ```
 
-## 🔧 Google Cloud配置
-
-### 1. 创建Google Cloud项目
-
-访问 [Google Cloud Console](https://console.cloud.google.com/)
-1. 创建新项目或选择现有项目
-2. 记录项目ID
-
-### 2. 启用Video Intelligence API
-
+### **4. 高级配置**
 ```bash
-gcloud services enable videointelligence.googleapis.com
-```
-
-或在Console中手动启用：
-- 导航到 APIs & Services > Library
-- 搜索 "Video Intelligence API"
-- 点击启用
-
-### 3. 创建服务账号
-
-1. 转到 IAM & Admin > Service Accounts
-2. 点击 "Create Service Account"
-3. 输入账号名称和描述
-4. 授予角色:
-   - Video Intelligence API User
-   - Storage Object Admin (如果需要处理大文件)
-
-### 4. 下载凭据文件
-
-1. 在服务账号页面，点击您创建的账号
-2. 转到 "Keys" 选项卡
-3. 点击 "Add Key" > "Create new key"
-4. 选择 JSON 格式
-5. 下载并保存文件
-
-### 5. 配置凭据
-
-**方法1: 环境变量 (推荐)**
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="path/to/your/credentials.json"
-```
-
-**方法2: 放置在工具目录**
-将凭据文件重命名为 `google_credentials.json` 并放在工具目录下。
-
-## 📖 使用指南
-
-### 基本用法
-
-```bash
-python batch_video_to_slice.py input_videos/
-```
-
-### 高级用法
-
-```bash
-python batch_video_to_slice.py input_videos/ \
-  -o output_slices/ \
-  -f shot_detection label_detection \
-  --patterns "*.mp4" "*.avi" \
+# 自定义所有参数
+python run.py data/input/ \
+  -o data/output/ \
+  -c 2 \
+  -w 6 \
+  --features shot_detection \
+  --patterns "*.mp4" "*.mov" \
   -v
 ```
 
-### 参数说明
+## ⚙️ 功能特性
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `input_dir` | 输入视频目录 | **必填** |
-| `-o, --output` | 输出目录 | `./output_slices` |
-| `-t, --temp` | 临时目录 | `./temp` |
-| `-f, --features` | 分析功能 | `shot_detection label_detection` |
-| `--patterns` | 文件匹配模式 | `*.mp4 *.avi *.mov *.mkv` |
-| `-v, --verbose` | 详细输出 | `False` |
+### **🎯 双层并行架构**
+- **视频级并行**: 最多3个视频同时分析 (遵循Google Cloud API配额)
+- **切片级并行**: 4-8个FFmpeg进程同时切片
+- **性能提升**: 相比串行处理提升4-5倍速度
+- **智能优化**: 默认镜头检测，性能提升22%
 
-### 支持的分析功能
+### **📝 智能视频分析**
+- **Google Cloud Video Intelligence API**: 专业级视频内容分析
+- **镜头检测**: 自动识别视频场景切换点
+- **标签识别**: 可选的内容标签检测
+- **自动重试**: 网络问题自动恢复机制
 
-- `shot_detection`: 镜头检测 (推荐)
-- `label_detection`: 标签检测
-- `face_detection`: 人脸检测
-- `text_detection`: 文本检测
+### **🔒 质量保证**
+| 检查项 | 标准 | 说明 |
+|--------|------|------|
+| 并发控制 | API配额限制 | 自动限制并发数避免超限 |
+| 错误处理 | 自动重试 | 网络异常自动重试3次 |
+| 资源管理 | 内存优化 | FFmpeg进程池避免资源竞争 |
+| 进度监控 | 实时显示 | 双层进度条显示处理状态 |
 
-## 📁 输出结构
+## 📊 支持格式
 
+### **输入格式**
+- **视频**: MP4, MOV, AVI, MKV, WEBM, WMV, FLV
+
+### **输出格式**
+- **切片**: MP4 (H.264编码，优化质量)
+- **元数据**: JSON格式的切片信息和批处理报告
+
+## 🔧 配置说明
+
+### **环境变量**
+```bash
+# 必需
+export GOOGLE_APPLICATION_CREDENTIALS="config/your-service-account.json"
+
+# 可选
+export LOG_LEVEL="INFO"
+export TEMP_DIR="./data/temp"
 ```
-output_slices/
+
+### **性能参数**
+| 参数 | 默认值 | 可选值 | 说明 |
+|------|--------|--------|------|
+| `-c, --concurrent` | 3 | 1-3 | 视频级并发数 (API限制) |
+| `-w, --ffmpeg-workers` | 4 | 2-8 | FFmpeg并行线程数 |
+| `--features` | shot_detection | shot_detection, label_detection | 分析功能 |
+| `--patterns` | 视频格式 | 文件匹配模式 | 支持的文件类型 |
+
+## 🏗️ 架构设计
+
+### **模块职责**
+- **parallel_batch_processor.py**: 主并行处理器，流程控制和并发管理
+- **parallel_video_slicer.py**: FFmpeg并行切片器，视频分割处理
+- **google_video_analyzer.py**: Google Cloud API封装，视频内容分析
+
+### **处理流程**
+```mermaid
+graph TD
+    A[输入视频] --> B[并行批处理器]
+    B --> C[Google Cloud分析]
+    C --> D[镜头检测]
+    D --> E[FFmpeg并行切片]
+    E --> F[输出切片文件]
+    F --> G[生成报告]
+```
+
+## 📁 数据管理
+
+### **输入数据** (`data/input/`)
+```bash
+data/input/
+├── video1.mp4
+├── video2.mov
+└── video3.avi
+```
+
+### **输出数据** (`data/output/`)
+```bash
+data/output/
 ├── video1/
-│   ├── video1_slice_001_0.0s-5.2s.mp4
-│   ├── video1_slice_002_5.2s-12.8s.mp4
-│   ├── video1_slice_003_12.8s-20.1s.mp4
+│   ├── video1_semantic_seg_1_镜头1.mp4
+│   ├── video1_semantic_seg_2_镜头2.mp4
 │   └── video1_slices.json
 ├── video2/
-│   ├── video2_slice_001_0.0s-7.5s.mp4
-│   ├── video2_slice_002_7.5s-15.3s.mp4
-│   └── video2_slices.json
-└── batch_processing_report.json
+│   └── ...
+└── parallel_batch_processing_report.json
 ```
 
-### 切片信息文件格式
+### **临时数据** (`data/temp/`)
+- Google Cloud上传临时文件
+- FFmpeg处理中间文件
+- API响应缓存文件
 
-`video_slices.json` 包含每个视频的详细切片信息：
+## 📈 性能表现
 
-```json
-{
-  "video_name": "sample_video",
-  "video_path": "/path/to/original/video.mp4",
-  "analysis_features": ["shot_detection", "label_detection"],
-  "total_shots": 5,
-  "successful_slices": 4,
-  "quality_check": {
-    "passed": true,
-    "stats": {
-      "valid_slices": 4,
-      "total_duration": 45.6,
-      "avg_duration": 11.4
-    }
-  },
-  "slices": [
-    {
-      "index": 1,
-      "file_path": "/path/to/slice.mp4",
-      "filename": "video_slice_001_0.0s-5.2s.mp4",
-      "start_time": 0.0,
-      "end_time": 5.2,
-      "duration": 5.2,
-      "type": "镜头1",
-      "confidence": 1.0
-    }
-  ],
-  "processing_time": "2024-01-15T10:30:00"
-}
-```
+### **处理能力**
+- **速度提升**: 4-5倍于串行处理
+- **并发控制**: 遵循API配额限制
+- **资源优化**: 智能FFmpeg进程池管理
+- **稳定性**: 自动重试和错误恢复
 
-## 🔍 质量保证
+### **性能对比示例**
+| 场景 | 串行处理 | 并行处理 | 加速比 |
+|------|----------|----------|--------|
+| 2个视频，每个36镜头 | ~780秒 | ~170秒 | **4.6x** |
+| 单个视频，36镜头 | ~390秒 | ~90秒 | **4.3x** |
+| Google分析优化 | ~120秒 | ~94秒 | **1.3x** |
 
-工具内置了多层质量检查机制：
+## 🔧 故障排除
 
-### 1. 输入验证
-- 视频文件存在性检查
-- 文件格式验证
-- 视频可读性测试
+### **常见问题**
 
-### 2. 切片质量检查
-- 文件大小验证 (最小1KB)
-- 时长合理性检查 (1-300秒)
-- 文件完整性验证
-
-### 3. 批处理统计
-- 有效切片比例 ≥ 80%
-- 错误率 ≤ 20%
-- 最少切片数量 ≥ 2
-
-### 4. 错误处理
-- 网络连接重试 (最多3次)
-- 超时保护 (20分钟)
-- 详细错误日志
-
-## 💰 成本估算
-
-Google Cloud Video Intelligence API按分钟计费：
-
-| 功能 | 价格/分钟 |
-|------|-----------|
-| 镜头检测 | $0.005 |
-| 标签检测 | $0.005 |
-| 文本检测 | $0.005 |
-| 人脸检测 | $0.010 |
-
-**示例计算:**
-- 10分钟视频 + 镜头检测 + 标签检测 = 10 × ($0.005 + $0.005) = $0.10
-
-*实际价格请参考 [Google Cloud官方定价](https://cloud.google.com/video-intelligence/pricing)*
-
-## 🚨 故障排除
-
-### 常见问题
-
-**1. 认证错误**
-```
-Error: Could not automatically determine credentials
-```
-解决方案：
-- 检查 `GOOGLE_APPLICATION_CREDENTIALS` 环境变量
-- 确认凭据文件路径正确
-- 验证JSON文件格式
-
-**2. API未启用**
-```
-Error: Video Intelligence API has not been used
-```
-解决方案：
+#### **1. Google Cloud凭据问题**
 ```bash
-gcloud services enable videointelligence.googleapis.com
+# 错误: GOOGLE_APPLICATION_CREDENTIALS 未设置
+# 解决: 设置环境变量
+export GOOGLE_APPLICATION_CREDENTIALS="config/your-service-account.json"
 ```
 
-**3. FFmpeg未找到**
-```
-Error: ffmpeg command not found
-```
-解决方案：
-- 安装FFmpeg: `brew install ffmpeg` (macOS)
-- 确认FFmpeg在PATH中: `which ffmpeg`
-
-**4. 权限不足**
-```
-Error: The caller does not have permission
-```
-解决方案：
-- 检查服务账号权限
-- 添加 "Video Intelligence API User" 角色
-
-**5. 网络连接问题**
-```
-Error: 无法连接到Google Cloud服务
-```
-解决方案：
-- 检查网络连接
-- 确认防火墙设置
-- 验证代理配置
-
-### 调试技巧
-
-**1. 启用详细日志**
+#### **2. 模块导入错误**
 ```bash
-python batch_video_to_slice.py input_videos/ -v
+# 错误: ModuleNotFoundError
+# 解决: 确保在项目根目录运行
+cd video_to_slice
+python run.py data/input/
 ```
 
-**2. 检查处理报告**
-查看 `batch_processing_report.json` 了解详细统计。
-
-**3. 单个文件测试**
-先用小文件测试配置是否正确。
-
-## 📊 性能优化
-
-### 1. 文件大小优化
-- 大文件 (>50MB) 自动上传到Cloud Storage
-- 小文件直接通过API处理
-- 自动清理临时文件
-
-### 2. 批处理优化
-- 并行处理多个视频
-- 智能重试机制
-- 内存使用优化
-
-### 3. 网络优化
-- 自动网络连接检查
-- 超时保护机制
-- 错误恢复策略
-
-## 🔧 高级配置
-
-### 自定义切片参数
-
-可以通过修改 `batch_video_to_slice.py` 中的参数来调整切片行为：
-
-```python
-# 默认切片时长 (当无法检测镜头时)
-segment_duration = 10.0  # 秒
-
-# 最小切片时长
-min_slice_duration = 1.0  # 秒
-
-# 质量检查阈值
-min_valid_ratio = 0.8     # 80%
-max_error_ratio = 0.2     # 20%
+#### **3. API配额超限**
+```bash
+# 错误: Google Cloud API限制
+# 解决: 减少视频并发数
+python run.py data/input/ -c 1
 ```
 
-### 输出格式自定义
-
-切片文件命名格式：
-```python
-slice_filename = f"{video_name}_slice_{index:03d}_{start_time:.1f}s-{end_time:.1f}s.mp4"
+#### **4. 内存不足**
+```bash
+# 错误: FFmpeg进程过多
+# 解决: 减少FFmpeg线程数
+python run.py data/input/ -w 2
 ```
 
-## 📝 更新日志
+## 📈 最佳实践
 
-### v1.0.0 (2024-01-15)
-- 初始版本发布
-- 支持基本镜头检测和切片功能
-- 内置质量保证机制
-- 批量处理支持
+### **1. 性能优化**
+```bash
+# CPU 4核心以下
+python run.py data/input/ -c 2 -w 2
 
-## 🤝 贡献指南
+# CPU 4-8核心 (推荐)
+python run.py data/input/ -c 3 -w 4
 
-欢迎提交Issues和Pull Requests！
+# CPU 8核心以上
+python run.py data/input/ -c 3 -w 6
+```
 
-### 开发环境搭建
+### **2. 批量处理**
+- 将大量文件分批处理
+- 监控API配额使用情况
+- 定期清理临时文件
 
-1. Fork这个仓库
-2. 创建开发分支: `git checkout -b feature/new-feature`
-3. 安装开发依赖: `pip install -r requirements.txt`
-4. 进行修改并测试
-5. 提交Pull Request
+### **3. 质量控制**
+- 使用镜头检测模式获得最佳性能
+- 检查生成的切片文件质量
+- 备份处理报告用于分析
 
-## 📄 许可证
+## 🔄 版本信息
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+### **v5.0 - 规范化架构版**
+- ✅ 采用标准化项目结构
+- ✅ 双层并行处理架构
+- ✅ 分离数据、配置、文档
+- ✅ 智能错误处理和重试
 
-## 🔗 相关链接
-
-- [Google Cloud Video Intelligence API文档](https://cloud.google.com/video-intelligence/docs)
-- [FFmpeg官方文档](https://ffmpeg.org/documentation.html)
-- [Python Google Cloud SDK](https://github.com/googleapis/google-cloud-python)
-
-## 💬 支持
-
-如果您遇到问题或有建议，请：
-
-1. 查看故障排除部分
-2. 搜索现有Issues
-3. 创建新Issue并提供详细信息
+### **核心优势**
+- **结构清晰**: 遵循Python项目最佳实践
+- **性能卓越**: 双层并行处理，4-5倍速度提升
+- **稳定可靠**: 完善的错误处理和重试机制
+- **易于维护**: 模块化设计，职责明确
 
 ---
 
-⭐ 如果这个工具对您有帮助，请给我们一个Star！ 
+**🎬 AI Video Master 5.0** - 专业级视频切片系统，性能卓越，结构规范！
+
+## 🔗 相关链接
+
+- [详细使用文档](docs/README.md) - 完整的功能说明和API文档
+- [凭据配置](config/credentials_README.md) - Google Cloud配置指南 

@@ -36,7 +36,7 @@ current_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(current_dir))
 
 try:
-    from moviepy.editor import VideoFileClip
+    from moviepy.video.io.VideoFileClip import VideoFileClip
     from dashscope_audio_analyzer import DashScopeAudioAnalyzer
     from srt_utils import to_srt
 except ImportError as e:
@@ -236,8 +236,7 @@ class BatchVideoTranscriber:
             video.audio.write_audiofile(
                 audio_path, 
                 codec='mp3', 
-                logger=None, 
-                verbose=False
+                logger=None
             )
             video.close()
             
@@ -304,13 +303,15 @@ class BatchVideoTranscriber:
             logger.error(f"转录视频失败 {video_path}: {e}")
             return False
     
-    def transcribe_video_to_srt_with_details(self, video_path: str, output_srt_path: str) -> Dict[str, Any]:
+    def transcribe_video_to_srt_with_details(self, video_path: str, output_srt_path: str,
+                                           preset_vocabulary_id: Optional[str] = None) -> Dict[str, Any]:
         """
         将单个视频转录为SRT文件 - 返回详细结果
         
         Args:
             video_path: 视频文件路径
             output_srt_path: 输出SRT文件路径
+            preset_vocabulary_id: 预设词汇表ID (默认使用婴幼儿奶粉专用热词表)
             
         Returns:
             Dict: 详细的转录结果，包含质量统计信息
@@ -326,9 +327,12 @@ class BatchVideoTranscriber:
                         "error_type": "audio_extraction_failed"
                     }
                 
-                # 2. 转录音频
+                # 2. 转录音频 - 使用预设词汇表ID
                 logger.info(f"正在转录音频: {Path(video_path).name}")
-                trans_result = self.analyzer.transcribe_audio(audio_path)
+                trans_result = self.analyzer.transcribe_audio(
+                    audio_path,
+                    preset_vocabulary_id=preset_vocabulary_id
+                )
                 
                 if not trans_result.get("success"):
                     return {
@@ -386,7 +390,8 @@ class BatchVideoTranscriber:
             }
     
     def batch_process(self, input_dir: str, output_dir: str, 
-                     supported_formats: List[str] = None) -> Dict[str, Any]:
+                     supported_formats: List[str] = None,
+                     preset_vocabulary_id: Optional[str] = None) -> Dict[str, Any]:
         """
         批量处理文件夹中的视频文件
         
@@ -394,6 +399,7 @@ class BatchVideoTranscriber:
             input_dir: 输入视频文件夹
             output_dir: 输出SRT文件夹
             supported_formats: 支持的视频格式列表
+            preset_vocabulary_id: 预设词汇表ID (默认使用婴幼儿奶粉专用热词表)
             
         Returns:
             处理结果统计
@@ -460,8 +466,12 @@ class BatchVideoTranscriber:
                 })
                 continue
             
-            # 处理视频 - 增强结果处理
-            transcription_result = self.transcribe_video_to_srt_with_details(video_path, output_srt_path)
+            # 处理视频 - 使用预设词汇表ID
+            transcription_result = self.transcribe_video_to_srt_with_details(
+                video_path, 
+                output_srt_path,
+                preset_vocabulary_id=preset_vocabulary_id
+            )
             
             if transcription_result["success"]:
                 results["success_count"] += 1

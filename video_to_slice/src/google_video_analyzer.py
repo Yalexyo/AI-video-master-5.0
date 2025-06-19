@@ -142,9 +142,9 @@ class GoogleVideoAnalyzer:
         try:
             from google.cloud import videointelligence_v1 as vi
 
-            # 默认功能
+            # 默认功能 - 只使用镜头检测以提升性能
             if not features:
-                features = ["shot_detection", "label_detection"]
+                features = ["shot_detection"]
 
             # 转换功能名称为API枚举
             feature_map = {
